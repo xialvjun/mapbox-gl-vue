@@ -283,6 +283,7 @@ export const Marker = defineComponent({
         // div.setAttribute('style', ins.$el.getAttribute('style')!);
         div.style.cssText = div.style.cssText.match(/(transform\:\s.+\;)/)?.[1] + (ins.$el as HTMLDivElement).style.cssText;
       }
+      copy_css();
       onUpdated(copy_css);
       const marker = new mapboxgl.Marker(div);
       onUnmounted(() => marker.remove());

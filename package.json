@@ -4,6 +4,7 @@
   "description": "a simple mapbox-gl vue bind, compatible for both 2 and 3",
   "main": "index.js",
   "scripts": {
+    "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
