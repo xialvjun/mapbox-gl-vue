@@ -1,0 +1,29 @@
+{
+  "name": "@xialvjun/mapbox-gl-vue",
+  "version": "0.1.0",
+  "description": "a simple mapbox-gl vue bind, compatible for both 2 and 3",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xialvjun/mapbox-gl-vue.git"
+  },
+  "keywords": [
+    "mapbox-gl",
+    "vue"
+  ],
+  "author": "xialvjun@live.com",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/xialvjun/mapbox-gl-vue/issues"
+  },
+  "homepage": "https://github.com/xialvjun/mapbox-gl-vue#readme",
+  "dependencies": {
+    "@types/mapbox-gl": "^2.0.0",
+    "mapbox-gl": "^2.0.1",
+    "typescript": "^4.1.3",
+    "vue": "^3.0.4"
+  }
+}

@@ -1,0 +1,11 @@
+dependencies:
+  vue: 2.6.12
+lockfileVersion: 5.2
+packages:
+  /vue/2.6.12:
+    dev: false
+    resolution:
+      integrity: sha1-9evU+mvShpQD4pqJau1JBEVskSM=
+      tarball: vue/download/vue-2.6.12.tgz
+specifiers:
+  vue: ^2.6.12
