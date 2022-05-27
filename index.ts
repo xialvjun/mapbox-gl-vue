@@ -57,6 +57,7 @@ export const Map = defineComponent({
     return { init_map: this.map };
   },
 });
+export const MglMap = Map;
 
 export const Images = defineComponent({
   name: "MglImages",
@@ -103,6 +104,7 @@ export const Images = defineComponent({
     this.unload_imgs();
   },
 });
+export const MglImages = Images;
 
 export const Source = defineComponent({
   name: "MglSource",
@@ -158,6 +160,7 @@ export const Source = defineComponent({
     },
   },
 });
+export const MglSource = Source;
 
 export const GeojsonSource = defineComponent({
   name: "MglGeojsonSource",
@@ -180,6 +183,7 @@ export const GeojsonSource = defineComponent({
     return h(Source as any, is_2 ? { props } : props, [get_children(this)]);
   },
 });
+export const MglGeojsonSource = GeojsonSource;
 
 export const Layer = defineComponent({
   name: "MglLayer",
@@ -229,6 +233,7 @@ export const Layer = defineComponent({
     },
   },
 });
+export const MglLayer = Layer;
 
 export const Event = defineComponent({
   name: "MglEvent",
@@ -273,6 +278,7 @@ export const Event = defineComponent({
     }
   },
 });
+export const MglEvent = Event;
 
 // ! OriginMarker 对应真实 dom 的顺序 与 vdom 的顺序会不一致
 export const OriginMarker = defineComponent({
@@ -341,6 +347,7 @@ export const OriginMarker = defineComponent({
     },
   },
 });
+export const MglOriginMarker = OriginMarker;
 
 // ! OriginPopup 对应真实 dom 的顺序 与 vdom 的顺序会不一致
 // ! 默认创建的 Popup 有 closeOnClick=true, 只要改变下 lng_lat 造成重新执行 addTo(map) 就能再次显示. 也可通过 key 重新创建来控制.
@@ -412,6 +419,7 @@ export const OriginPopup = defineComponent({
     },
   },
 });
+export const MglOriginPopup = OriginPopup;
 
 // export const Event1 = defineComponent({
 //   name: "MglEvent",

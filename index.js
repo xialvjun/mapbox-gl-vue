@@ -77,6 +77,7 @@ export var Map = defineComponent({
         return { init_map: this.map };
     },
 });
+export var MglMap = Map;
 export var Images = defineComponent({
     name: "MglImages",
     props: {
@@ -121,6 +122,7 @@ export var Images = defineComponent({
         this.unload_imgs();
     },
 });
+export var MglImages = Images;
 export var Source = defineComponent({
     name: "MglSource",
     props: {
@@ -175,6 +177,7 @@ export var Source = defineComponent({
         },
     },
 });
+export var MglSource = Source;
 export var GeojsonSource = defineComponent({
     name: "MglGeojsonSource",
     props: {
@@ -196,6 +199,7 @@ export var GeojsonSource = defineComponent({
         return h(Source, is_2 ? { props: props } : props, [get_children(this)]);
     },
 });
+export var MglGeojsonSource = GeojsonSource;
 export var Layer = defineComponent({
     name: "MglLayer",
     props: {
@@ -244,6 +248,7 @@ export var Layer = defineComponent({
         },
     },
 });
+export var MglLayer = Layer;
 export var Event = defineComponent({
     name: "MglEvent",
     props: {
@@ -252,6 +257,7 @@ export var Event = defineComponent({
             required: true,
         },
         init_layer: String,
+        // @callback
     },
     inject: ["init_map", "init_layer_id"],
     data: function () {
@@ -288,6 +294,7 @@ export var Event = defineComponent({
         }
     },
 });
+export var MglEvent = Event;
 // ! OriginMarker 对应真实 dom 的顺序 与 vdom 的顺序会不一致
 export var OriginMarker = defineComponent({
     name: "MglOriginMarker",
@@ -356,6 +363,7 @@ export var OriginMarker = defineComponent({
         },
     },
 });
+export var MglOriginMarker = OriginMarker;
 // ! OriginPopup 对应真实 dom 的顺序 与 vdom 的顺序会不一致
 // ! 默认创建的 Popup 有 closeOnClick=true, 只要改变下 lng_lat 造成重新执行 addTo(map) 就能再次显示. 也可通过 key 重新创建来控制.
 export var OriginPopup = defineComponent({
@@ -427,6 +435,7 @@ export var OriginPopup = defineComponent({
         },
     },
 });
+export var MglOriginPopup = OriginPopup;
 // export const Event1 = defineComponent({
 //   name: "MglEvent",
 //   props: {
