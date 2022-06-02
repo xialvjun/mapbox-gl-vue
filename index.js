@@ -34,21 +34,7 @@ var new_id = (function (num) { return function () {
 var ensure_ctx_expose = function (ctx) {
     if (ctx.expose)
         return;
-    ctx.expose = function (exposing) {
-        var instance = getCurrentInstance();
-        if (!instance) {
-            throw new Error('expose should be called in setup().');
-        }
-        var keys = Object.keys(exposing);
-        keys.forEach(function (key) {
-            instance.proxy[key] = exposing[key];
-        });
-        onBeforeUnmount(function () {
-            keys.forEach(function (key) {
-                instance.proxy[key] = undefined;
-            });
-        });
-    };
+    ctx.expose = function (exposing) { return Object.assign(getCurrentInstance().proxy, exposing); };
 };
 // const replace_dom = (to_replace: Node, replace: Node) => {
 //   const parent = to_replace.parentNode!;

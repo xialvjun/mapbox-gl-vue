@@ -1,6 +1,6 @@
 {
   "name": "@xialvjun/mapbox-gl-vue",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "a simple mapbox-gl vue bind, compatible for both 2 and 3",
   "main": "index.js",
   "scripts": {
