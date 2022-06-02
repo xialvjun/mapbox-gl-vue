@@ -4,12 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "parcel index.html"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@xialvjun/mapbox-gl-vue": "file:../../",
+    "mapbox-gl": "^2.8.2",
+    "parcel": "latest",
     "vue": "^3.0.4"
   }
 }

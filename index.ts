@@ -1,525 +1,454 @@
-import "mapbox-gl/dist/mapbox-gl.css";
-import mgl from "mapbox-gl";
-import * as Vue from "vue";
+import { h, defineComponent, getCurrentInstance, isVue2, PropType } from 'vue-demi';
+import { shallowRef, computed, watch, provide, inject } from 'vue-demi';
+import { onMounted, onBeforeUpdate, onUpdated, onBeforeUnmount, onUnmounted } from 'vue-demi';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import mapboxgl from 'mapbox-gl';
 
-const is_2 = !(Vue.version || "").startsWith("3");
+const SYMBOL_MAP = Symbol('SYMBOL_MAP');
+const SYMBOL_SOURCE_ID = Symbol('SYMBOL_SOURCE_ID');
+const SYMBOL_LAYER_ID = Symbol('SYMBOL_LAYER_ID');
 
-const defineComponent: typeof Vue.defineComponent = (options: any) => {
-  if (is_2) {
-    options.beforeDestroy = options.beforeUnmount;
-    options.destroyed = options.unmounted;
-    return (Vue as any).default.extend(options);
-  }
-  return Vue.defineComponent(options);
+const new_id = (num => () => {
+  return `_` + (num++ + Math.random()).toString(36).replace('.', '_');
+})(0);
+const ensure_ctx_expose = (ctx: any) => {
+  if (ctx.expose) return;
+  ctx.expose = (exposing: any) => Object.assign(getCurrentInstance()!.proxy!, exposing);
 };
-const get_h = (h?: any) => (typeof h === "function" ? h : Vue.h) as typeof Vue.h;
-const get_children = (that: any) =>
-  (typeof that.$slots.default === "function" ? that.$slots.default() : that.$slots.default) as [Vue.VNode];
+// const replace_dom = (to_replace: Node, replace: Node) => {
+//   const parent = to_replace.parentNode!;
+//   parent.insertBefore(replace, to_replace);
+//   parent.removeChild(to_replace);
+// };
 
-const new_id = ((num) => () => `_` + (num++ + Math.random()).toString(36).replace(".", "_"))(0);
-const replace_dom = (to_replace: Node, replace: Node) => {
-  const parent = to_replace.parentNode!;
-  parent.insertBefore(replace, to_replace);
-  parent.removeChild(to_replace);
-};
-
-export const Map = defineComponent({
-  name: "MglMap",
+export const MglMap = defineComponent({
+  name: 'MglMap',
   props: {
-    init: Object as () => Omit<mgl.MapboxOptions, "container">,
-    cache: Object as () => mgl.Map,
+    init: Object as PropType<Omit<mapboxgl.MapboxOptions, 'container'>>,
+    cache: Object as PropType<mapboxgl.Map>,
   },
-  data() {
-    let map = this.cache!;
+  setup(props, ctx) {
+    const insp = getCurrentInstance()!.proxy!;
+    const { init, cache } = props;
+    let map = cache!;
     if (!map) {
-      const container = document.createElement("div");
-      container.style.cssText = "position:absolute;top:0;right:0;bottom:0;left:0;";
-      map = new mgl.Map({ ...this.init, container });
+      const container = document.createElement('div');
+      container.style.cssText = 'position:absolute;top:0;right:0;bottom:0;left:0;';
+      map = new mapboxgl.Map({ ...init, container });
     }
-    let is_style_loaded = map.isStyleLoaded();
-    return { map, is_style_loaded };
-  },
-  render(h: typeof Vue.h) {
-    h = get_h(h);
-    return h("div", { style: "position:relative;overflow:hidden;width:100%;height:100%;" }, [this.is_style_loaded && get_children(this)]);
-  },
-  mounted() {
-    const { map, is_style_loaded } = this;
-    this.$el.appendChild(map.getContainer());
-    map.resize();
-    if (!is_style_loaded) {
-      map.once("load", () => {
-        this.is_style_loaded = true;
-      });
-    }
-  },
-  provide() {
-    return { init_map: this.map };
+    ensure_ctx_expose(ctx);
+    ctx.expose({ map });
+    provide(SYMBOL_MAP, map);
+    const is_map_loaded = shallowRef(false);
+    onMounted(() => {
+      insp.$el.appendChild(map.getContainer());
+      map.resize();
+      // insp.$nextTick().then(() => map.resize());
+      is_map_loaded.value = map.isStyleLoaded();
+      if (!is_map_loaded.value) {
+        map.once('load', () => (is_map_loaded.value = true));
+      }
+    });
+    const wrapper_style = {
+      width: '100%',
+      height: '100%',
+      position: 'relative',
+      overflow: 'hidden',
+    } as const;
+    return () => {
+      return h('div', { style: wrapper_style }, [is_map_loaded.value && ctx.slots.default?.()]);
+    };
   },
 });
-export const MglMap = Map;
 
-export const Images = defineComponent({
-  name: "MglImages",
+export const MglEvent = defineComponent({
+  name: 'MglEvent',
+  props: {
+    init_type: {
+      type: String as PropType<keyof mapboxgl.MapLayerEventType>,
+      required: true,
+    },
+    init_layer_id: String,
+  },
+  emits: ['callback'],
+  setup(props, ctx) {
+    const map = inject<mapboxgl.Map>(SYMBOL_MAP)!;
+    const layer_id = props.init_layer_id || inject<string>(SYMBOL_LAYER_ID);
+    if (layer_id) {
+      map.on(props.init_type, layer_id, e => ctx.emit('callback', e));
+    } else {
+      map.on(props.init_type, e => ctx.emit('callback', e));
+    }
+    return () => h('div', [ctx.slots.default?.()]);
+  },
+});
+
+export const MglImages = defineComponent({
+  name: 'MglImages',
   props: {
     init_imgs: {
-      type: Object as () => Record<string, string>,
+      type: Object as PropType<Record<string, string>>,
       required: true,
     },
   },
-  inject: ["init_map"],
-  data() {
-    return { is_imgs_loaded: false, map: (this as any).init_map as mgl.Map, imgs: { ...this.init_imgs } };
-  },
-  render(h: typeof Vue.h) {
-    h = get_h(h);
-    return h("div", [this.is_imgs_loaded && get_children(this)]);
-  },
-  methods: {
-    load_img(name: string, url: string) {
-      const map = this.map;
-      return new Promise((res, rej) => {
-        map.loadImage(url, (err: Error, img: any) => {
+  setup(props, ctx) {
+    const { init_imgs } = props;
+    const map = inject<mapboxgl.Map>(SYMBOL_MAP)!;
+
+    const load_img = (name: string, url: string) => {
+      return new Promise<HTMLImageElement | ImageBitmap | undefined>((res, rej) => {
+        map.loadImage(url, (err, img) => {
           if (err) return rej(err);
-          res(map.addImage(name, img));
+          map.addImage(name, img!);
+          res(img);
         });
       });
-    },
-    unload_imgs() {
-      const { map, imgs } = this;
-      Object.keys(imgs).forEach((name) => map.hasImage(name) && map.removeImage(name));
-    },
-  },
-  beforeMount() {
-    const { map, imgs } = this;
-    Promise.all(Object.keys(imgs).map((name) => this.load_img(name, imgs[name]))).then(
-      (_) => (this.is_imgs_loaded = true),
-      (err) => {
-        this.unload_imgs();
+    };
+    const unload_imgs = () => {
+      Object.keys(init_imgs).forEach(name => map.hasImage(name) && map.removeImage(name));
+    };
+
+    const is_imgs_loaded = shallowRef(false);
+    Promise.all(Object.keys(init_imgs).map(name => load_img(name, init_imgs[name]))).then(
+      _ => (is_imgs_loaded.value = true),
+      err => {
+        unload_imgs();
         throw err;
-      },
+      }
     );
-  },
-  unmounted() {
-    this.unload_imgs();
+    onUnmounted(() => unload_imgs());
+
+    return () => h('div', [is_imgs_loaded.value && ctx.slots.default?.()]);
   },
 });
-export const MglImages = Images;
 
-export const Source = defineComponent({
-  name: "MglSource",
+export const MglSource = defineComponent({
+  name: 'MglSource',
   props: {
+    init_id: String,
     source: {
-      type: Object as () => mapboxgl.AnySourceData,
+      type: Object as PropType<mapboxgl.AnySourceData>,
       required: true,
     },
   },
-  inject: ["init_map"],
-  data() {
-    return { source_id: new_id(), map: (this as any).init_map as mgl.Map };
-  },
-  render(h: typeof Vue.h) {
-    h = get_h(h);
-    return h("div", [get_children(this)]);
-  },
-  provide() {
-    return { init_source_id: this.source_id };
-  },
-  beforeMount() {
-    this.map.addSource(this.source_id, this.source);
-  },
-  unmounted() {
-    this.map.removeSource(this.source_id);
-  },
-  watch: {
-    source(cv, pv) {
-      const s = this.map.getSource(this.source_id);
-      if (s.type === "geojson") {
-        s.setData((cv as mapboxgl.GeoJSONSourceRaw).data!);
+  setup(props, ctx) {
+    const map = inject<mapboxgl.Map>(SYMBOL_MAP)!;
+    const source_id = props.init_id || new_id();
+    provide(SYMBOL_SOURCE_ID, source_id);
+    map.addSource(source_id, props.source);
+    onUnmounted(() => map.removeSource(source_id));
+    watch(
+      () => props.source,
+      cv => {
+        const s = map.getSource(source_id);
+        if (s.type === 'geojson') {
+          s.setData((cv as mapboxgl.GeoJSONSourceRaw).data!);
+        }
+        if (s.type === 'canvas') {
+          const _cv = cv as mapboxgl.CanvasSourceRaw;
+          s.setCoordinates(_cv.coordinates);
+          _cv.animate ? s.play() : s.pause();
+        }
+        if (s.type === 'image') {
+          s.updateImage(cv as mapboxgl.ImageSourceRaw);
+        }
+        if (s.type === 'raster') {
+          // do nothing
+        }
+        if (s.type === 'raster-dem') {
+          // do nothing
+        }
+        if (s.type === 'vector') {
+          // do nothing
+        }
+        if (s.type === 'video') {
+          s.setCoordinates((cv as mapboxgl.VideoSourceRaw).coordinates!);
+        }
       }
-      if (s.type === "canvas") {
-        const _cv = cv as mapboxgl.CanvasSourceRaw;
-        s.setCoordinates(_cv.coordinates);
-        _cv.animate ? s.play() : s.pause();
-      }
-      if (s.type === "image") {
-        s.updateImage(cv as mapboxgl.ImageSourceRaw);
-      }
-      if (s.type === "raster") {
-        // do nothing
-      }
-      if (s.type === "raster-dem") {
-        // do nothing
-      }
-      if (s.type === "vector") {
-        // do nothing
-      }
-      if (s.type === "video") {
-        s.setCoordinates((cv as mapboxgl.VideoSourceRaw).coordinates!);
-      }
-    },
+    );
+    return () => h('div', [ctx.slots.default?.()]);
   },
 });
-export const MglSource = Source;
 
-export const GeojsonSource = defineComponent({
-  name: "MglGeojsonSource",
+export const MglGeojsonSource = defineComponent({
+  name: 'MglGeojsonSource',
   props: {
-    init: Object as () => Omit<mapboxgl.GeoJSONSourceOptions, "data">,
-    data: Object as () => mapboxgl.GeoJSONSourceOptions["data"],
+    init_id: String,
+    init: Object as PropType<Omit<mapboxgl.GeoJSONSourceOptions, 'data'>>,
+    data: Object as PropType<mapboxgl.GeoJSONSourceOptions['data']>,
   },
-  data() {
-    return { _init: { ...this.init } };
-  },
-  computed: {
-    source() {
-      const { _init, data } = this as any;
-      return { ..._init, data, type: "geojson" };
-    },
-  },
-  render(h: typeof Vue.h) {
-    h = get_h(h);
-    const props = { source: this.source };
-    return h(Source as any, is_2 ? { props } : props, [get_children(this)]);
+  setup(props, ctx) {
+    const source = computed(() => {
+      return { ...props.init, data: props.data, type: 'geojson' };
+    });
+    return () => {
+      const _props = { init_id: props.init_id, source: source.value };
+      return h('div', [h(MglSource as any, isVue2 ? { props: _props } : _props, [ctx.slots.default?.()])]);
+    };
   },
 });
-export const MglGeojsonSource = GeojsonSource;
 
-export const Layer = defineComponent({
-  name: "MglLayer",
+export const MglCanvasSource = defineComponent({
+  name: 'MglCanvasSource',
+  props: {
+    init_id: String,
+    init_canvas: [String, Object] as PropType<mapboxgl.CanvasSourceOptions['canvas']>,
+    coordinates: Array as PropType<mapboxgl.CanvasSourceOptions['coordinates']>,
+    animate: Boolean,
+  },
+  setup(props, ctx) {
+    const insp = getCurrentInstance()!.proxy!;
+    const { init_canvas } = props;
+    const should_create_canvas = !init_canvas;
+    const canvas_ref = shallowRef(init_canvas);
+    onMounted(() => {
+      if (should_create_canvas) {
+        canvas_ref.value = insp.$refs.canvas as HTMLCanvasElement;
+      }
+    });
+    const source = computed(() => {
+      return {
+        canvas: canvas_ref.value,
+        coordinates: props.coordinates,
+        animate: props.animate,
+      };
+    });
+    return () => {
+      const _props = { init_id: props.init_id, source: source.value };
+      return h('div', [
+        should_create_canvas && h('canvas', { ref: 'canvas', attrs: ctx.attrs }),
+        canvas_ref.value && h(MglSource as any, isVue2 ? { props: _props } : _props, [ctx.slots.default?.()]),
+      ]);
+    };
+  },
+});
+
+export const MglLayer = defineComponent({
+  name: 'MglLayer',
   props: {
     init_id: String,
     before_id: String,
     layer: {
-      type: Object as () => Omit<mapboxgl.Layer, "id" | "source">,
+      type: Object as () => Omit<mapboxgl.Layer, 'id' | 'source'>,
       required: true,
     },
   },
-  inject: ["init_map", "init_source_id"],
-  data() {
-    return {
-      layer_id: this.init_id || new_id(),
-      map: (this as any).init_map as mgl.Map,
-      source_id: (this as any).init_source_id as string,
-    };
-  },
-  render(h: typeof Vue.h) {
-    return null;
-  },
-  provide() {
-    return { init_layer_id: this.layer_id };
-  },
-  beforeMount() {
-    this.map.addLayer({ ...(this.layer as any), id: this.layer_id, source: this.source_id });
-    this.map.moveLayer(this.layer_id, this.before_id);
-  },
-  unmounted() {
-    this.map.removeLayer(this.layer_id);
-  },
-  watch: {
-    before_id(cv, pv) {
-      this.map.moveLayer(this.layer_id, cv);
-    },
-    layer(cv, pv) {
-      const { map, layer_id, source_id } = this;
-      const { layout = {} as any, paint = {} as any, filter, minzoom, maxzoom, ...other } = cv || {};
-      const l = map.getLayer(layer_id);
-      Object.keys(layout).forEach((key) => map.setLayoutProperty(layer_id, key, layout[key]));
-      Object.keys(paint).forEach((key) => map.setPaintProperty(layer_id, key, paint[key]));
-      map.setFilter(layer_id, filter);
-      map.setLayerZoomRange(layer_id, minzoom!, maxzoom!);
-      Object.assign(l, { ...other, id: layer_id, source: source_id });
-      map.triggerRepaint();
-    },
+  setup(props, ctx) {
+    const map = inject<mapboxgl.Map>(SYMBOL_MAP)!;
+    const source_id = inject<string>(SYMBOL_SOURCE_ID);
+    const layer_id = props.init_id || new_id();
+    provide(SYMBOL_LAYER_ID, layer_id);
+
+    map.addLayer({ ...(props.layer as any), id: layer_id, source: source_id });
+    onUnmounted(() => map.removeLayer(layer_id));
+    // // 不是 用 watch.immediate.true 来立即设置 before_id, 而是在 onMounted 里去设置是避免 before_id 不存在
+    // onMounted(() => map.moveLayer(layer_id, props.before_id));
+    watch(
+      () => props.before_id,
+      cv => map.moveLayer(layer_id, cv),
+      { immediate: true }
+    );
+    watch(
+      () => props.layer,
+      (cv, pv, inv) => {
+        const { layout = {} as any, paint = {} as any, filter, minzoom, maxzoom, ...other } = cv || {};
+        const l = map.getLayer(layer_id);
+        Object.keys(layout).forEach(key => map.setLayoutProperty(layer_id, key, layout[key]));
+        Object.keys(paint).forEach(key => map.setPaintProperty(layer_id, key, paint[key]));
+        map.setFilter(layer_id, filter);
+        map.setLayerZoomRange(layer_id, minzoom!, maxzoom!);
+        Object.assign(l, { ...other, id: layer_id, source: source_id });
+        map.triggerRepaint();
+      }
+    );
+    return () => h('div', [ctx.slots.default?.()]);
   },
 });
-export const MglLayer = Layer;
 
-export const Event = defineComponent({
-  name: "MglEvent",
-  props: {
-    init_type: {
-      type: String as () => keyof mapboxgl.MapLayerEventType,
-      required: true,
-    },
-    init_layer: String,
-    // @callback
-  },
-  inject: ["init_map", "init_layer_id"],
-  data() {
-    let callback = function (this: any, e: any) {
-      this.$emit("callback", e);
-    };
-    callback = callback.bind(this);
-    return {
-      map: (this as any).init_map as mgl.Map,
-      type: this.init_type,
-      layer: this.init_layer || (this as any).init_layer_id,
-      callback,
-    };
-  },
-  render(h: typeof Vue.h) {
-    return null;
-  },
-  beforeMount() {
-    const { map, type, layer, callback } = this;
-    if (layer) {
-      map.on(type, layer, callback);
-    } else {
-      map.on(type, callback);
-    }
-  },
-  unmounted() {
-    const { map, type, layer, callback } = this;
-    if (layer) {
-      map.off(type, layer, callback);
-    } else {
-      map.off(type, callback);
-    }
-  },
-});
-export const MglEvent = Event;
-
-// ! OriginMarker 对应真实 dom 的顺序 与 vdom 的顺序会不一致
-export const OriginMarker = defineComponent({
-  name: "MglOriginMarker",
+export const MglOriginMarker = defineComponent({
+  name: 'MglOriginMarker',
   props: {
     lng_lat: {
-      type: ([Object, Array] as any) as () => mapboxgl.LngLatLike,
+      type: [Object, Array] as PropType<mapboxgl.LngLatLike>,
       required: true,
     },
   },
-  inject: ["init_map"],
-  data() {
-    const map = (this as any).init_map as mgl.Map;
-    const div = document.createElement("div");
-    const map_place: Node = document.createComment("");
-    const vue_place: Node = document.createComment("");
-    div.appendChild(map_place);
-    const marker = new mgl.Marker(div);
-    marker.setLngLat(this.lng_lat);
-    marker.addTo(map);
-    return { map, div, map_place, vue_place, marker, ele: null };
-  },
-  render(h: typeof Vue.h) {
-    h = get_h(h);
-    // 两层 div 是避免 $slots.default 是多元素 fragment
-    return h("div", { class: "fasfaf" }, [h("div", [get_children(this)])]);
-  },
-  methods: {
-    copy_css() {
-      this.div.className = this.div.className
-        .split(/\s/)
-        .filter((it) => it.startsWith("mapboxgl-"))
-        .concat(this.$el.className)
-        .join(" ");
-      this.div.style.cssText = this.div.style.cssText.match(/(transform\:\s.+\;)/)?.[1] + this.$el.style.cssText;
-    },
-    replace_in() {
-      replace_dom(this.ele, this.vue_place);
-      replace_dom(this.map_place, this.ele);
-    },
-    replace_out() {
-      replace_dom(this.ele, this.map_place);
-      replace_dom(this.vue_place, this.ele);
-    },
-  },
-  mounted() {
-    this.ele = this.$el.firstElementChild!;
-    this.copy_css();
-    this.replace_in();
-  },
-  beforeUpdate() {
-    this.replace_out();
-  },
-  updated() {
-    this.copy_css();
-    this.replace_in();
-  },
-  beforeUnmount() {
-    this.replace_out();
-    this.marker.remove();
-  },
-  watch: {
-    lng_lat(cv, pv) {
-      this.marker.setLngLat(cv);
-      this.marker.addTo(this.map);
-    },
+  setup(props, ctx) {
+    const insp = getCurrentInstance()!.proxy!;
+    const map = inject<mapboxgl.Map>(SYMBOL_MAP)!;
+    const div = document.createElement('div');
+    const marker = new mapboxgl.Marker(div);
+    ensure_ctx_expose(ctx);
+    ctx.expose({ marker });
+    watch(
+      () => props.lng_lat,
+      cv => {
+        marker.setLngLat(cv);
+        marker.addTo(map);
+      },
+      { immediate: true }
+    );
+    onMounted(() => {
+      const content_div = insp.$el.firstElementChild;
+      div.appendChild(content_div);
+      onBeforeUnmount(() => {
+        insp.$el.appendChild(content_div);
+        marker.remove();
+      });
+      // TODO: 其实应该是有 onBeforeUpdate 时把 dom 移回来, onUpdated 时再移回去的逻辑, 但是这样性能并不是很好, 而且 css 动画都会重新播放, 体验不是很好.
+      // 基于 vue vdom 都有对应的真实 dom 的引用, 本身并没有严格检查真实 dom 的结构, 下面又把 slot 包装进一个 div 里去了, 所以也不会有问题. Popup 同样如此
+    });
+
+    return () => h('div', [h('div', [ctx.slots.default?.()])]);
   },
 });
-export const MglOriginMarker = OriginMarker;
 
-// ! OriginPopup 对应真实 dom 的顺序 与 vdom 的顺序会不一致
-// ! 默认创建的 Popup 有 closeOnClick=true, 只要改变下 lng_lat 造成重新执行 addTo(map) 就能再次显示. 也可通过 key 重新创建来控制.
-export const OriginPopup = defineComponent({
-  name: "MglOriginPopup",
-  props: {
-    init: Object as () => mapboxgl.PopupOptions,
-    lng_lat: {
-      type: ([Object, Array] as any) as () => mapboxgl.LngLatLike,
-      required: true,
-    },
-  },
-  inject: ["init_map"],
-  data() {
-    const map = (this as any).init_map as mgl.Map;
-    const div = document.createElement("div");
-    const map_place: Node = document.createComment("");
-    const vue_place: Node = document.createComment("");
-    div.appendChild(map_place);
-    const popup = new mgl.Popup(this.init);
-    popup.setDOMContent(div);
-    popup.setLngLat(this.lng_lat);
-    popup.addTo(map);
-    return { map, div, map_place, vue_place, popup, ele };
-  },
-  render(h: typeof Vue.h) {
-    h = get_h(h);
-    // 两层 div 是避免 $slots.default 是多元素 fragment
-    return h("div", [h("div", [get_children(this)])]);
-  },
-  methods: {
-    copy_css() {
-      this.div.className = this.div.className
-        .split(/\s/)
-        .filter((it) => it.startsWith("mapboxgl-"))
-        .concat(this.$el.className)
-        .join(" ");
-      this.div.style.cssText = this.div.style.cssText.match(/(transform\:\s.+\;)/)?.[1] + this.$el.style.cssText;
-    },
-    replace_in() {
-      replace_dom(this.ele, this.vue_place);
-      replace_dom(this.map_place, this.ele);
-    },
-    replace_out() {
-      replace_dom(this.ele, this.map_place);
-      replace_dom(this.vue_place, this.ele);
-    },
-  },
-  mounted() {
-    this.ele = this.$el.firstElementChild!;
-    this.copy_css();
-    this.replace_in();
-  },
-  beforeUpdate() {
-    this.replace_out();
-  },
-  updated() {
-    this.copy_css();
-    this.replace_in();
-  },
-  beforeUnmount() {
-    this.replace_out();
-    this.popup.remove();
-  },
-  watch: {
-    lng_lat(cv, pv) {
-      this.popup.setLngLat(cv);
-      this.popup.addTo(this.map);
-    },
-  },
-});
-export const MglOriginPopup = OriginPopup;
-
-// export const Event1 = defineComponent({
-//   name: "MglEvent",
+// export const MglOriginMarker = defineComponent({
+//   name: 'MglOriginMarker',
 //   props: {
-//     type: {
-//       type: String as () => keyof mapboxgl.MapLayerEventType,
+//     init_sync: Boolean,
+//     lng_lat: {
+//       type: [Object, Array] as PropType<mapboxgl.LngLatLike>,
 //       required: true,
 //     },
-//     layer: String,
 //   },
-//   inject: ["init_map", "init_layer_id"],
-//   data() {
-//     let callback = function (this: any, e: any) {
-//       this.$emit("dispatch", e);
-//     };
-//     callback = callback.bind(this);
-//     return { map: (this as any).init_map as mgl.Map, callback };
-//   },
-//   computed: {
-//     type_layer(): [string, string?] {
-//       const type_layer = [this.type, this.layer] as const;
-//       return type_layer as any;
-//     },
-//   },
-//   methods: {
-//     off_event([type, layer]: [any, string?]) {
-//       if (layer) {
-//         this.map.off(type, layer, this.callback);
-//         return;
-//       }
-//       this.map.off(type, this.callback);
-//     },
-//   },
-//   watch: {
-//     type_layer: {
-//       handler([type, layer], pv) {
-//         if (pv) {
-//           this.off_event(pv);
-//         }
-//         if (layer) {
-//           this.map.on(type, layer, this.callback);
-//           return;
-//         }
-//         this.map.on(type, this.callback);
-//       },
-//       immediate: true,
-//     },
-//   },
-//   unmounted() {
-//     this.off_event([this.type, this.layer]);
+//   setup(props, ctx) {
+//     const insp = getCurrentInstance()!.proxy!;
+//     const map = inject<mapboxgl.Map>(SYMBOL_MAP)!;
+//     const init_sync = props.init_sync;
+//     onMounted(() => {
+//       const div = document.createElement('div');
+//       // ! 此种方式原本有问题就是 dom 的顺序与 jsx/template 无关, 而是与创建时间顺序有关, 导致想要 hover 的元素想要 z 轴覆盖其他元素必须让它更晚创建.
+//       // ! 至于 z-index 也是不行的, 因为 mapboxgl 给 marker div 增加了样式, 让内部元素的 z-index 无法透出
+//       // ! 这导致我们只能通过这种方式去修改 onMounted 里创建的 div
+//       // 其实主要问题是 ins.$el.parentElement 竟然一开始不存在
+//       const copy_css = () => {
+//         // mapbox-gl 自己会给元素增加 mapboxgl- 开头的 className 和 style.transform, 不得动它们
+//         div.className = div.className
+//           .split(/\s/)
+//           .filter(it => it.startsWith('mapboxgl-'))
+//           .concat(insp.$el.className)
+//           .join(' ');
+//         // div.className = ins.$el.className;
+//         // div.setAttribute('style', ins.$el.getAttribute('style')!);
+//         div.style.cssText = div.style.cssText.match(/(transform\:\s.+\;)/)?.[1] + (ins.$el as HTMLDivElement).style.cssText;
+//       };
+//       copy_css();
+//       onUpdated(copy_css);
+//       const marker = new mapboxgl.Marker(div);
+//       onUnmounted(() => marker.remove());
+//       watch(
+//         () => props.lng_lat,
+//         cv => {
+//           marker.setLngLat(cv);
+//           marker.addTo(map);
+//         },
+//         { immediate: true }
+//       );
+
+//       const map_place: Node = document.createComment('');
+//       div.appendChild(map_place);
+//       const vue_place: Node = document.createComment('');
+//       const ele = ins.$el.firstElementChild!;
+//       const replace_in = () => {
+//         replace_dom(ele, vue_place);
+//         replace_dom(map_place, ele);
+//       };
+//       const replace_out = () => {
+//         replace_dom(ele, map_place);
+//         replace_dom(vue_place, ele);
+//       };
+//       replace_in();
+//       onBeforeUpdate(replace_out);
+//       onUpdated(replace_in);
+//       onBeforeUnmount(replace_out);
+//     });
+//     return () => h('div', [h('div', [ctx.slots.default?.()])]);
 //   },
 // });
 
-// export const Event2 = defineComponent({
-//   name: "MglEvent",
+export const MglOriginPopup = defineComponent({
+  name: 'MglOriginPopup',
+  props: {
+    init: Object as () => mapboxgl.PopupOptions,
+    lng_lat: [Object, Array] as any as () => mapboxgl.LngLatLike,
+  },
+  setup(props, ctx) {
+    const insp = getCurrentInstance()!.proxy!;
+    const map = inject<mapboxgl.Map>(SYMBOL_MAP)!;
+    const div = document.createElement('div');
+    const popup = new mapboxgl.Popup(props.init);
+    ensure_ctx_expose(ctx);
+    ctx.expose({ popup });
+    popup.setDOMContent(div);
+    watch(
+      () => props.lng_lat,
+      cv => {
+        cv ? popup.setLngLat(cv) : popup.trackPointer();
+        popup.addTo(map);
+      },
+      { immediate: true }
+    );
+    onMounted(() => {
+      const content_div = insp.$el.firstElementChild;
+      div.appendChild(content_div);
+      onBeforeUnmount(() => {
+        insp.$el.appendChild(content_div);
+        popup.remove();
+      });
+    });
+    return () => h('div', [h('div', [ctx.slots.default?.()])]);
+  },
+});
+
+// // ! 目前默认是创建 mapboxgl.Popup 时是 closeOnClick=true, 那就会出现 mapboxgl.Popup 已经关闭了, 但当前这个 Popup vue 组件还存在的情况.
+// // ! 此时移动下 lng_lat 就能让 Popup 重新出现, 部分受控.
+// // ! 如果担心需要 Popup 出现, 但 lng_lat 并不变化(其实不可能, 因为它是 object/array), 可对 vue 组件加 key.
+// export const Popup = defineComponent({
+//   name: 'MglPopup',
 //   props: {
-//     type: {
-//       type: String as () => keyof mapboxgl.MapLayerEventType,
-//       required: true,
-//     },
-//     layer: String,
-//     callback: {
-//       type: (null as any) as () => (e: (mapboxgl.MapLayerMouseEvent | mapboxgl.MapLayerTouchEvent) & Record<string, any>) => any,
+//     init: Object as () => mapboxgl.PopupOptions,
+//     lng_lat: {
+//       type: [Object, Array] as any as () => mapboxgl.LngLatLike,
 //       required: true,
 //     },
 //   },
-//   inject: ["init_map"],
-//   data() {
-//     return { map: (this as any).init_map as mgl.Map };
-//   },
-//   computed: {
-//     params(): any {
-//       return [this.type, this.layer, this.callback];
-//     },
-//   },
-//   methods: {
-//     off_event([type, layer, callback]: any) {
-//       if (layer) {
-//         this.map.off(type, layer, callback);
-//         return;
-//       }
-//       this.map.off(type, callback);
-//     },
-//   },
-//   watch: {
-//     params: {
-//       handler([type, layer, callback], pv) {
-//         if (pv) {
-//           this.off_event(pv);
-//         }
-//         if (layer) {
-//           this.map.on(type, layer, callback);
-//           return;
-//         }
-//         this.map.on(type, callback);
-//       },
-//       immediate: true,
-//     },
-//   },
-//   unmounted() {
-//     this.off_event(this.params);
+//   setup(props, ctx) {
+//     const ins = getCurrentInstance()!;
+//     const map = inject<mapboxgl.Map>(SYMBOL_MAP)!;
+//     onMounted(() => {
+//       const div = document.createElement('div');
+//       const popup = new mapboxgl.Popup(props.init);
+//       popup.setDOMContent(div);
+//       onUnmounted(() => popup.remove());
+//       watch(
+//         () => props.lng_lat,
+//         cv => {
+//           popup.setLngLat(cv);
+//           // * 随时都把 popup 重新加到 map 上, 避免用户因 closeOnClick=true 而关闭了 popup 之后就不能再打开它 的困境
+//           // * 那种困境下只能重新创建 vue 组件, 很麻烦...本质上其实是很多使用方式并不完全需要 事件 来进行完全的受控组件开发
+//           popup.addTo(map);
+//         },
+//         { immediate: true }
+//       );
+
+//       const map_place: Node = document.createComment('');
+//       div.appendChild(map_place);
+//       const vue_place: Node = document.createComment('');
+//       const ele = ins.$el.firstElementChild!;
+//       const replace_in = () => {
+//         replace_dom(ele, vue_place);
+//         replace_dom(map_place, ele);
+//       };
+//       const replace_out = () => {
+//         replace_dom(ele, map_place);
+//         replace_dom(vue_place, ele);
+//       };
+//       replace_in();
+//       onBeforeUpdate(replace_out);
+//       onUpdated(replace_in);
+//       onBeforeUnmount(replace_out);
+//     });
+//     return () => h('div', [h('div', [ctx.slots.default?.()])]);
 //   },
 // });
